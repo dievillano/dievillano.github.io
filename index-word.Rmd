@@ -3,6 +3,9 @@ title: "Encuesta sobre servicios de diagnóstico de laboratorios de micología e
 author: "Diego Villa"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
+  word_document:
+    toc: yes
+    toc_depth: '3'
   html_document:
     toc: yes
     toc_depth: 3
@@ -2256,7 +2259,7 @@ flg_suscep_tests_lab_plot <- flg_suscep_tests_lab %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "Does the laboratory perform the antifungal susceptibility tests or are they sent to\nan external laboratory?",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 20)",
+    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
     x = NULL,
     y = NULL
   ) +
@@ -2267,71 +2270,52 @@ flg_suscep_tests_lab_plot <- flg_suscep_tests_lab %>%
 flg_suscep_tests_lab_plot
 ```
 
-## What types of fungi are antifungal susceptibility tests available for?
+## ¿Para qué tipos de hongos están disponibles las pruebas de susceptibilidad antifúngica?
 
-```{r message=FALSE}
+```{r}
 type_antifungal <- survey %>% 
-  filter(flg_antifungal_suscep_tests == "Sí") %>% 
+  filter(flg_antifungal_suscep_tests == "Sí") %>%
   pivot_longer(
     type_fungi_antifungal_suscep_tests___1:type_fungi_antifungal_suscep_tests___2,
     names_to = "type_antifungal",
-    names_prefix = "type_fungi_antifungal_suscep_tests___",
-    values_to = "availability"
+    names_prefix = "type_fungi_antifungal_suscep_tests___"
   ) %>% 
+  filter(value == "Seleccionados") %>% 
+  mutate(n = n_distinct(record_id)) %>% 
+  group_by(type_antifungal) %>% 
+  summarise(count = n(), n = mean(n), .groups = "drop") %>% 
   mutate(
     type_antifungal = factor(
       type_antifungal, levels = as.character(1:2),
       labels = c(
-        "Yeast", "Mold"
+        "Levaduras", "Moho"
       )
-    ),
-    availability = factor(
-      availability, levels = c("No seleccionados", "Seleccionados"),
-      labels = c("No", "Yes")
     )
   ) %>% 
-  mutate(type_antifungal = fct_rev(type_antifungal)) %>% 
-  group_by(type_antifungal, availability) %>% 
-  summarise(n = n()) %>% 
-  mutate(prop = n / sum(n)) %>% 
-  mutate(text = str_c(round(100 * prop, 2), "%")) %>% 
-  ungroup() %>% 
-  complete(type_antifungal, availability) %>% 
-  replace_na(list(n = 0, prop = 0, text = "0%"))
-
-type_antifungal_prop <- type_antifungal %>% 
-  filter(availability == "Yes") %>% 
-  pull(prop)
-
-type_antifungal <- type_antifungal %>% 
+  mutate(prop = count / n) %>% 
   mutate(
-    type_antifungal = factor(
-      type_antifungal,
-      levels = levels(type_antifungal)[order(type_antifungal_prop, decreasing = TRUE)]
-    )
-  ) %>% 
-  mutate(type_antifungal = fct_rev(type_antifungal))
+    percent = round(100 * prop, 2),
+    text = str_c(percent, "% (", count, ")")
+  )
 ```
 
 ```{r}
 type_antifungal_plot <- type_antifungal %>% 
-  ggplot(aes(x = type_antifungal, y = prop, fill = availability)) +
-  geom_col(position = "stack") +
-  scale_y_continuous(limits = c(0, 1), expand = c(0, 0), labels = scales::percent) +
+  ggplot(aes(reorder(type_antifungal, prop), prop)) +
+  geom_col(fill = "#4DBBD5FF") +
+  geom_text(aes(label = text), hjust = -0.1, size = 3.2) +
+  scale_y_continuous(limits = c(0, 1.1), expand = c(0, 0), labels = scales::percent) +
   theme_minimal() +
   theme(panel.grid.minor.x = element_blank()) +
   labs(
-    title = "What types of fungi are antifungal susceptibility tests available for?",
-    subtitle = "Percentage (%) by sample type from total (N = 20)",
+    title = "¿Para qué tipos de hongos están disponibles las pruebas de susceptibilidad\nantifúngica? (N = 20)",
     x = NULL,
-    y = NULL,
-    fill = "Available?"
+    y = NULL
   ) +
-  scale_fill_manual(values = c("Yes" = "#01324f", "No" = "#b2c1ca")) +
   coord_flip()
 ```
 
-```{r fig.height=2, fig.width=9}
+```{r fig.height=2, fig.width=8}
 type_antifungal_plot
 ```
 
