@@ -19,6 +19,7 @@ knitr::opts_chunk$set(echo = FALSE, message = FALSE)
 
 ```{r include=FALSE}
 library(readr)
+library(readxl)
 library(dplyr)
 library(stringr)
 library(ggplot2)
@@ -33,8 +34,8 @@ library(flextable)
 ```
 
 ```{r}
-survey_raw <- read_csv(
-  "data/raw/survey.csv", col_types = cols(.default = "c")
+survey_raw <- read_excel(
+  "data/raw/revisited-responses.xlsx", col_types = "text"
 )
 ```
 
@@ -53,14 +54,15 @@ survey <- survey_raw %>%
     ),
     flg_lima = ifelse(department_hosp_lab == "Lima", "Lima", "Other departments"),
     capacity = case_when(
-      category_host_lab == "II-1" | 
-        category_host_lab == "II-2" |
-        category_host_lab == "I-3" | 
-        category_host_lab == "Hospital I - Essalud" |
-        category_host_lab == "I-43" ~ "Laboratorio de menor capacidad",
-      TRUE ~ "Laboratorio de mayor capacidad"
+      category_hosp_lab == "II-1" | 
+        category_hosp_lab == "II-2" |
+        category_hosp_lab == "I-3" | 
+        category_hosp_lab == "Hospital I - Essalud" |
+        category_hosp_lab == "I-43" ~ "Low capacity",
+      TRUE ~ "High capacity"
     )
-  )
+  ) %>% 
+  mutate(capacity = factor(capacity, levels = c("Low capacity", "High capacity")))
 ```
 
 # General information 
@@ -84,12 +86,12 @@ department_plot <- department %>%
   ggplot(aes(reorder(department_hosp_lab, prop), prop)) +
   geom_col(fill = "#01324f") +
   geom_text(aes(label = text), hjust = -0.1, size = 4) +
-  scale_y_continuous(limits = c(0, 0.43), expand = c(0, 0), labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 0.37), expand = c(0, 0), labels = scales::percent) +
   theme_minimal() +
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "Departament where the hospital/laboratory is located",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
+    subtitle = "Percentage and frequency (N = 47)",
     x = NULL,
     y = NULL
   ) +
@@ -102,6 +104,38 @@ department_plot
 ```
 
 ## Time the laboratory has been carrying out mycological diagnoses
+
+```{r}
+survey %>% 
+  select(years_myco_diag_lab) %>% 
+  tbl_summary(
+    # by = flg_lima,
+    label = years_myco_diag_lab ~ "Time the laboratory has been carrying out mycological diagnoses",
+    statistic = years_myco_diag_lab ~ c(
+      "{N_nonmiss}", "{min}, {max}", "{median} ({p25}, {p75})", "{mean} ({sd})" 
+    ),
+    digits = years_myco_diag_lab ~ c(0, 0, 0, 2, 2, 2, 2, 2),
+    type = years_myco_diag_lab ~ "continuous2",
+    missing = "ifany",
+    missing_text = "No respondieron"
+  ) %>% 
+  # add_overall(last = TRUE) %>% 
+  add_stat_label(
+    label = years_myco_diag_lab ~ c(
+      "Responses", "Range", "Median (IQR)", "Mean (SD)" 
+    )
+  ) %>% 
+  modify_header(label = "**Variable**") %>% 
+  modify_table_styling(
+    columns = label,
+    rows = label == "Time the laboratory has been carrying out mycological diagnoses",
+    footnote = "Years"
+  )
+  # as_flex_table() %>% 
+  # autofit()
+```
+
+### Time the laboratory has been carrying out mycological diagnoses by region
 
 ```{r}
 survey %>% 
@@ -133,6 +167,37 @@ survey %>%
   # autofit()
 ```
 
+### Time the laboratory has been carrying out mycological diagnoses by capacity
+
+```{r}
+survey %>% 
+  select(years_myco_diag_lab, capacity) %>% 
+  tbl_summary(
+    by = capacity,
+    label = years_myco_diag_lab ~ "Time the laboratory has been carrying out mycological diagnoses",
+    statistic = years_myco_diag_lab ~ c(
+      "{N_nonmiss}", "{min}, {max}", "{median} ({p25}, {p75})", "{mean} ({sd})" 
+    ),
+    digits = years_myco_diag_lab ~ c(0, 0, 0, 2, 2, 2, 2, 2),
+    type = years_myco_diag_lab ~ "continuous2",
+    missing = "ifany",
+    missing_text = "No respondieron"
+  ) %>% 
+  add_overall(last = TRUE) %>% 
+  add_stat_label(
+    label = years_myco_diag_lab ~ c(
+      "Responses", "Range", "Median (IQR)", "Mean (SD)" 
+    )
+  ) %>% 
+  modify_header(label = "**Variable**") %>% 
+  modify_table_styling(
+    columns = label,
+    rows = label == "Time the laboratory has been carrying out mycological diagnoses",
+    footnote = "Years"
+  )
+  # as_flex_table() %>% 
+  # autofit()
+```
 
 # Additional information about the hospital/health facility the laboratory belongs
 
@@ -154,6 +219,7 @@ survey %>%
     missing = "ifany",
     missing_text = "No response"
   ) %>% 
+  add_overall(last = TRUE) %>% 
   add_stat_label(
     label = total_n_hosp_beds ~ c(
       "Responses", "Range", "Median (IQR)", "Mean (SD)" 
@@ -162,7 +228,7 @@ survey %>%
   modify_header(label = "**Variable**")
 ```
 
-### Total number of hospital beds by capacity level
+### Total number of hospital beds by capacity 
 
 ```{r}
 survey %>% 
@@ -178,6 +244,7 @@ survey %>%
     missing = "ifany",
     missing_text = "No response"
   ) %>% 
+  add_overall(last = TRUE) %>% 
   add_stat_label(
     label = total_n_hosp_beds ~ c(
       "Responses", "Range", "Median (IQR)", "Mean (SD)" 
@@ -200,9 +267,7 @@ services_hosp_lab <- survey %>%
     services_hosp_lab = factor(
       services_hosp_lab, levels = as.character(1:8),
       labels = c(
-        "COVID-19 Area", "Oncohematology", 
-        "Infectology", 
-        "PROCETSS",
+        "COVID-19 Area", "Oncohematology", "Infectology", "PROCETSS",
         "Adult ICU", "Neonatal ICU", "Transplant Unit", 
         "Tuberculosis patient\ncare area"
       )
@@ -248,7 +313,7 @@ services_hosp_lab_plot <- services_hosp_lab %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "Which services are available in your hospital/health facility?",
-    subtitle = "Percentage (%) by service from total (N = 54)",
+    subtitle = "Percentage by service (N = 47)",
     x = NULL,
     y = NULL,
     fill = "Available?"
@@ -298,7 +363,7 @@ area_plot <- area %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "What is the approximate microbiology work area?",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
+    subtitle = "Percentage and frequency (N = 47)",
     x = NULL,
     y = NULL
   ) +
@@ -338,7 +403,7 @@ area_fungal_plot <- area_fungal %>%
   theme(legend.position = "none", panel.grid.minor.x = element_blank()) +
   labs(
     title = "Do you have a separate work zone for fungal diagnostic tests?",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
+    subtitle = "Percentage and frequency (N = 47)",
     x = NULL,
     y = NULL
   ) +
@@ -380,12 +445,12 @@ area_fungal_m_plot <- area_fungal_m %>%
   ggplot(aes(area_diag_hongos, prop)) +
   geom_col(fill = "#01324f") +
   geom_text(aes(label = text), hjust = -0.1, size = 3.2) +
-  scale_y_continuous(limits = c(0, 0.85), expand = c(0, 0), labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 0.95), expand = c(0, 0), labels = scales::percent) +
   theme_minimal() +
   theme(legend.position = "none", panel.grid.minor.x = element_blank()) +
   labs(
     title = "Work zone area for fungal diagnostic tests",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
+    subtitle = "Percentage and frequency (N = 47)",
     x = NULL,
     y = NULL
   ) +
@@ -457,7 +522,7 @@ equip_fungal_diag_plot <- equip_fungal_diag %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "Which equipements are available for the diagnosis of fungi?",
-    subtitle = "Percentage (%) by equipment type from total (N = 54)",
+    subtitle = "Percentage by equipment (N = 47)",
     x = NULL,
     y = NULL,
     fill = "Available?"
@@ -504,12 +569,12 @@ external_qual_plot <- external_qual %>%
   ggplot(aes(flg_external_qual_assess_lab, prop)) +
   geom_col(fill = "#01324f") +
   geom_text(aes(label = text), hjust = -0.1, size = 3.2) +
-  scale_y_continuous(limits = c(0, 0.65), expand = c(0, 0), labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 0.71), expand = c(0, 0), labels = scales::percent) +
   theme_minimal() +
   theme(legend.position = "none", panel.grid.minor.x = element_blank()) +
   labs(
     title = "Does the mycology laboratory participate in an external quality assessment scheme?",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
+    subtitle = "Percentage and frequency (N = 47)",
     x = NULL,
     y = NULL
   ) +
@@ -550,15 +615,11 @@ areas_qual_assess <- survey %>%
   mutate(prop = n / sum(n)) %>% 
   mutate(text = str_c(round(100 * prop, 2), "%")) %>% 
   ungroup()
-```
 
-```{r}
 areas_qual_assess_prop <- areas_qual_assess %>% 
   filter(availability == "Yes") %>% 
   pull(prop)
-```
 
-```{r}
 areas_qual_assess <- areas_qual_assess %>% 
   mutate(
     areas_qual_assess = factor(
@@ -578,7 +639,7 @@ areas_qual_assess_plot <- areas_qual_assess %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "In which areas is the mycology laboratory evaluated?",
-    subtitle = "Percentage (%) by equipment type from total (N = 54)",
+    subtitle = "Percentage by equipment (N = 47)",
     x = NULL,
     y = NULL,
     fill = "Available?"
@@ -617,6 +678,58 @@ survey %>%
   modify_header(label = "**Variable**")
 ```
 
+## Technical staff in the microbiology laboratory by region
+
+```{r}
+survey %>% 
+  select(n_tech_staff_lab, flg_lima) %>% 
+  mutate(n_tech_staff_lab = ifelse(n_tech_staff_lab > 100, NA, n_tech_staff_lab)) %>% 
+  tbl_summary(
+    by = flg_lima,
+    label = n_tech_staff_lab ~ "Technical staff in the microbiology laboratory",
+    statistic = n_tech_staff_lab ~ c(
+      "{N_nonmiss}", "{min}, {max}", "{median} ({p25}, {p75})", "{mean} ({sd})" 
+    ),
+    digits = n_tech_staff_lab ~ c(0, 0, 0, 2, 2, 2, 2, 2),
+    type = n_tech_staff_lab ~ "continuous2",
+    missing = "ifany",
+    missing_text = "No response"
+  ) %>% 
+  add_overall(last = TRUE) %>% 
+  add_stat_label(
+    label = n_tech_staff_lab ~ c(
+      "Responses", "Range", "Median (IQR)", "Mean (SD)" 
+    )
+  ) %>% 
+  modify_header(label = "**Variable**")
+```
+
+## Technical staff in the microbiology laboratory by capacity
+
+```{r}
+survey %>% 
+  select(n_tech_staff_lab, capacity) %>% 
+  mutate(n_tech_staff_lab = ifelse(n_tech_staff_lab > 100, NA, n_tech_staff_lab)) %>% 
+  tbl_summary(
+    by = capacity,
+    label = n_tech_staff_lab ~ "Technical staff in the microbiology laboratory",
+    statistic = n_tech_staff_lab ~ c(
+      "{N_nonmiss}", "{min}, {max}", "{median} ({p25}, {p75})", "{mean} ({sd})" 
+    ),
+    digits = n_tech_staff_lab ~ c(0, 0, 0, 2, 2, 2, 2, 2),
+    type = n_tech_staff_lab ~ "continuous2",
+    missing = "ifany",
+    missing_text = "No response"
+  ) %>% 
+  add_overall(last = TRUE) %>% 
+  add_stat_label(
+    label = n_tech_staff_lab ~ c(
+      "Responses", "Range", "Median (IQR)", "Mean (SD)" 
+    )
+  ) %>% 
+  modify_header(label = "**Variable**")
+```
+
 ## Professional staff in the microbiology laboratory
 
 ```{r}
@@ -641,6 +754,58 @@ survey %>%
   modify_header(label = "**Variable**")
 ```
 
+### Professional staff in the microbiology laboratory by region
+
+```{r}
+survey %>% 
+  select(n_profe_staff_lab, flg_lima) %>% 
+  mutate(n_profe_staff_lab = ifelse(n_profe_staff_lab > 100, NA, n_profe_staff_lab)) %>% 
+  tbl_summary(
+    by = flg_lima,
+    label = n_profe_staff_lab ~ "Professional staff in the microbiology laboratory",
+    statistic = n_profe_staff_lab ~ c(
+      "{N_nonmiss}", "{min}, {max}", "{median} ({p25}, {p75})", "{mean} ({sd})" 
+    ),
+    digits = n_profe_staff_lab ~ c(0, 0, 0, 2, 2, 2, 2, 2),
+    type = n_profe_staff_lab ~ "continuous2",
+    missing = "ifany",
+    missing_text = "No response"
+  ) %>% 
+  add_overall(last = TRUE) %>% 
+  add_stat_label(
+    label = n_profe_staff_lab ~ c(
+      "Responses", "Range", "Median (IQR)", "Mean (SD)" 
+    )
+  ) %>% 
+  modify_header(label = "**Variable**")
+```
+
+### Professional staff in the microbiology laboratory by capacity
+
+```{r}
+survey %>% 
+  select(n_profe_staff_lab, capacity) %>% 
+  mutate(n_profe_staff_lab = ifelse(n_profe_staff_lab > 100, NA, n_profe_staff_lab)) %>% 
+  tbl_summary(
+    by = capacity,
+    label = n_profe_staff_lab ~ "Professional staff in the microbiology laboratory",
+    statistic = n_profe_staff_lab ~ c(
+      "{N_nonmiss}", "{min}, {max}", "{median} ({p25}, {p75})", "{mean} ({sd})" 
+    ),
+    digits = n_profe_staff_lab ~ c(0, 0, 0, 2, 2, 2, 2, 2),
+    type = n_profe_staff_lab ~ "continuous2",
+    missing = "ifany",
+    missing_text = "No response"
+  ) %>% 
+  add_overall(last = TRUE) %>% 
+  add_stat_label(
+    label = n_profe_staff_lab ~ c(
+      "Responses", "Range", "Median (IQR)", "Mean (SD)" 
+    )
+  ) %>% 
+  modify_header(label = "**Variable**")
+```
+
 ## Total staff in the microbiology laboratory
 
 ```{r}
@@ -657,6 +822,58 @@ survey %>%
     missing = "ifany",
     missing_text = "No response"
   ) %>% 
+  add_stat_label(
+    label = total_n_staff ~ c(
+      "Responses", "Range", "Median (IQR)", "Mean (SD)" 
+    )
+  ) %>% 
+  modify_header(label = "**Variable**")
+```
+
+### Total staff in the microbiology laboratory by region
+
+```{r}
+survey %>% 
+  select(total_n_staff, flg_lima) %>% 
+  mutate(total_n_staff = ifelse(total_n_staff > 100, NA, total_n_staff)) %>% 
+  tbl_summary(
+    by = flg_lima,
+    label = total_n_staff ~ "Total staff in the microbiology laboratory",
+    statistic = total_n_staff ~ c(
+      "{N_nonmiss}", "{min}, {max}", "{median} ({p25}, {p75})", "{mean} ({sd})" 
+    ),
+    digits = total_n_staff ~ c(0, 0, 0, 2, 2, 2, 2, 2),
+    type = total_n_staff ~ "continuous2",
+    missing = "ifany",
+    missing_text = "No response"
+  ) %>% 
+  add_overall(last = TRUE) %>% 
+  add_stat_label(
+    label = total_n_staff ~ c(
+      "Responses", "Range", "Median (IQR)", "Mean (SD)" 
+    )
+  ) %>% 
+  modify_header(label = "**Variable**")
+```
+
+### Total staff in the microbiology laboratory by capacity
+
+```{r}
+survey %>% 
+  select(total_n_staff, capacity) %>% 
+  mutate(total_n_staff = ifelse(total_n_staff > 100, NA, total_n_staff)) %>% 
+  tbl_summary(
+    by = capacity,
+    label = total_n_staff ~ "Total staff in the microbiology laboratory",
+    statistic = total_n_staff ~ c(
+      "{N_nonmiss}", "{min}, {max}", "{median} ({p25}, {p75})", "{mean} ({sd})" 
+    ),
+    digits = total_n_staff ~ c(0, 0, 0, 2, 2, 2, 2, 2),
+    type = total_n_staff ~ "continuous2",
+    missing = "ifany",
+    missing_text = "No response"
+  ) %>% 
+  add_overall(last = TRUE) %>% 
   add_stat_label(
     label = total_n_staff ~ c(
       "Responses", "Range", "Median (IQR)", "Mean (SD)" 
@@ -693,6 +910,66 @@ survey %>%
   modify_header(label = "**Variable**")
 ```
 
+### Total staff in the mycology area by region
+
+```{r}
+survey %>% 
+  select(total_n_staff_mico_lab, flg_lima) %>% 
+  mutate(
+    total_n_staff_mico_lab = ifelse(
+      total_n_staff_mico_lab > 100, NA, total_n_staff_mico_lab
+    )
+  ) %>% 
+  tbl_summary(
+    by = flg_lima,
+    label = total_n_staff_mico_lab ~ "Total staff in the mycology area",
+    statistic = total_n_staff_mico_lab ~ c(
+      "{N_nonmiss}", "{min}, {max}", "{median} ({p25}, {p75})", "{mean} ({sd})" 
+    ),
+    digits = total_n_staff_mico_lab ~ c(0, 0, 0, 2, 2, 2, 2, 2),
+    type = total_n_staff_mico_lab ~ "continuous2",
+    missing = "ifany",
+    missing_text = "No response"
+  ) %>% 
+  add_overall(last = TRUE) %>% 
+  add_stat_label(
+    label = total_n_staff_mico_lab ~ c(
+      "Responses", "Range", "Median (IQR)", "Mean (SD)" 
+    )
+  ) %>% 
+  modify_header(label = "**Variable**")
+```
+
+### Total staff in the mycology area by capacity
+
+```{r}
+survey %>% 
+  select(total_n_staff_mico_lab, capacity) %>% 
+  mutate(
+    total_n_staff_mico_lab = ifelse(
+      total_n_staff_mico_lab > 100, NA, total_n_staff_mico_lab
+    )
+  ) %>% 
+  tbl_summary(
+    by = capacity,
+    label = total_n_staff_mico_lab ~ "Total staff in the mycology area",
+    statistic = total_n_staff_mico_lab ~ c(
+      "{N_nonmiss}", "{min}, {max}", "{median} ({p25}, {p75})", "{mean} ({sd})" 
+    ),
+    digits = total_n_staff_mico_lab ~ c(0, 0, 0, 2, 2, 2, 2, 2),
+    type = total_n_staff_mico_lab ~ "continuous2",
+    missing = "ifany",
+    missing_text = "No response"
+  ) %>% 
+  add_overall(last = TRUE) %>% 
+  add_stat_label(
+    label = total_n_staff_mico_lab ~ c(
+      "Responses", "Range", "Median (IQR)", "Mean (SD)" 
+    )
+  ) %>% 
+  modify_header(label = "**Variable**")
+```
+
 ## Mycology training/education program for mycology laboratory staff 
 
 ```{r}
@@ -717,12 +994,12 @@ myco_train_lab_plot <- myco_train_lab %>%
   ggplot(aes(flg_myco_train_lab, prop)) +
   geom_col(fill = "#01324f") +
   geom_text(aes(label = text), hjust = -0.1, size = 3.2) +
-  scale_y_continuous(limits = c(0, 0.99), expand = c(0, 0), labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 0.95), expand = c(0, 0), labels = scales::percent) +
   theme_minimal() +
   theme(legend.position = "none", panel.grid.minor.x = element_blank()) +
   labs(
     title = "Does your institution have a mycology training/education program for mycology laboratory staff?",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
+    subtitle = "Percentage and frequency (N = 47)",
     x = NULL,
     y = NULL
   ) +
@@ -800,7 +1077,7 @@ myco_train_lab_other_plot <- myco_train_lab_other %>%
   theme(legend.position = "none", panel.grid.minor.x = element_blank()) +
   labs(
     title = "Does the mycology laboratory carry out training aimed at other areas of the\nhospital/health facility?",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
+    subtitle = "Percentage and frequency (N = 47)",
     x = NULL,
     y = NULL
   ) +
@@ -866,7 +1143,7 @@ staff_myco_lab_train_plot <- staff_myco_lab_train %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "Who is the training carried out by the mycology laboratory aimed at?",
-    subtitle = "Percentage (%) by equipment type from total (N = 2)",
+    subtitle = "Percentage by staff type (N = 2)",
     x = NULL,
     y = NULL,
     fill = "Aimed at?"
@@ -920,7 +1197,7 @@ n_samples_covid_plot <- n_samples_covid %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "Average number of samples for mycosis diagnosis before COVID-19",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
+    subtitle = "Percentage and frequency (N = 47)",
     x = NULL,
     y = NULL
   ) +
@@ -965,12 +1242,12 @@ n_samples_present_plot <- n_samples_present %>%
   ggplot(aes(reorder(n_samples_myco_present, prop), prop)) +
   geom_col(fill = "#01324f") +
   geom_text(aes(label = text), hjust = -0.1, size = 3.2) +
-  scale_y_continuous(limits = c(0, 0.42), expand = c(0, 0), labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 0.43), expand = c(0, 0), labels = scales::percent) +
   theme_minimal() +
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "Average number of samples for mycosis diagnosis in the last 3 months",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
+    subtitle = "Percentage and frequency (N = 47)",
     x = NULL,
     y = NULL
   ) +
@@ -996,12 +1273,12 @@ hosp_units_samples <- survey %>%
     hosp_units_samples_myco = factor(
       hosp_units_samples_myco, levels = as.character(1:13),
       labels = c(
-        "Hosp. de Medicina", "Hosp. de Ginecología", 
-        "Hosp. de Cirugía", "Hosp. de Pediatría", 
-        "Hosp. de Infectología", "UCI", 
-        "Consulta Ambulatoria\nde Infectología", "Consulta Ambulatoria\nde Dematología", 
-        "Consulta Ambulatoria\nde Ginecología", "Consulta Ambulatoria\nde Neumología", 
-        "Oncología", "Transplantes", "Otras"
+        "Hosp.: Medicine", "Hosp.: Gynecology", 
+        "Hosp.: Surgery", "Hosp.: Pediatrics", 
+        "Hosp.: Infectology", "ICU", 
+        "Outpatient: Infectology", "Outpatient: Dermatology", 
+        "Outpatient: Gynecology", "Outpatient: Pneumology", 
+        "Oncology", "Transplants", "Others"
       )
     ),
     availability = factor(
@@ -1041,7 +1318,7 @@ hosp_units_samples_plot <- hosp_units_samples %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "In the last three months, which departments/units of the hospital have sent samples for\nthe diagnosis of mycosis?",
-    subtitle = "Percentage (%) by equipment type from total (N = 54)",
+    subtitle = "Percentage by departments (N = 47)",
     x = NULL,
     y = NULL,
     fill = "Available?"
@@ -1050,7 +1327,7 @@ hosp_units_samples_plot <- hosp_units_samples %>%
   coord_flip()
 ```
 
-```{r fig.height=6.5, fig.width=9}
+```{r fig.height=6, fig.width=9}
 hosp_units_samples_plot
 ```
  
@@ -1112,7 +1389,7 @@ most_freq_sample_plot <- most_freq_sample %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "In the last 3 months, what type of sample have you processed most frequently for\nthe diagnosis of mycoses?",
-    subtitle = "Percentage (%) by sample type from total (N = 54)",
+    subtitle = "Percentage by sample (N = 47)",
     x = NULL,
     y = NULL,
     fill = "Most frequent?"
@@ -1396,7 +1673,7 @@ flg_micro_tests_plot <- flg_micro_tests %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "Does the mycology laboratory perform microscopic examinations?",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
+    subtitle = "Percentage and frequency (N = 47)",
     x = NULL,
     y = NULL
   ) +
@@ -1464,7 +1741,7 @@ micro_tests_plot <- micro_tests %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "What microscopic examinations are available in your laboratory?",
-    subtitle = "Percentage (%) by sample type from total (N = 54)",
+    subtitle = "Percentage by test (N = 47)",
     x = NULL,
     y = NULL,
     fill = "Available?"
@@ -1508,12 +1785,12 @@ delivery_time_china_plot <- delivery_time_china %>%
   ggplot(aes(reorder(results_delivery_time_china, prop), prop)) +
   geom_col(fill = "#01324f") +
   geom_text(aes(label = text), hjust = -0.1, size = 3.2) +
-  scale_y_continuous(limits = c(0, 1), expand = c(0, 0), labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 0.95), expand = c(0, 0), labels = scales::percent) +
   theme_minimal() +
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "How long does it take to deliver the Chinese ink stain test results after receiving the sample?",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 37)",
+    subtitle = "Percentage and frequency (N = 37)",
     x = NULL,
     y = NULL
   ) +
@@ -1560,7 +1837,7 @@ delivery_time_giemsa_plot <- delivery_time_giemsa %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "How long does it take to deliver the Giemsa ink stain test results after receiving the sample?",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 30)",
+    subtitle = "Percentage and frequency (N = 30)",
     x = NULL,
     y = NULL
   ) +
@@ -1627,7 +1904,7 @@ delivery_methods_plot <- delivery_methods %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "What results delivery methods do you use?",
-    subtitle = "Percentage (%) by sample type from total (N = 51)",
+    subtitle = "Percentage by sample (N = 44)",
     x = NULL,
     y = NULL,
     fill = "Available?"
@@ -1669,7 +1946,7 @@ culture_media_yeast <- survey %>%
   mutate(culture_media_yeast = fct_rev(culture_media_yeast)) %>% 
   group_by(culture_media_yeast, availability) %>% 
   summarise(n = n()) %>% 
-  mutate(prop = n / sum(n)) %>% 
+  mutate(total = sum(n), prop = n / total) %>% 
   mutate(text = str_c(round(100 * prop, 2), "%")) %>% 
   ungroup()
 
@@ -1696,7 +1973,7 @@ culture_media_yeast_plot <- culture_media_yeast %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "Which types of culture medias are available in your laboratory for yeast\nidentification?",
-    subtitle = "Percentage (%) by sample type from total (N = 54)",
+    subtitle = sprintf("Percentage by sample (N = %s)", mean(culture_media_yeast$total)),
     x = NULL,
     y = NULL,
     fill = "Available?"
@@ -1719,7 +1996,7 @@ culture_media_yeast_plot
 flg_identi_yeast <- survey %>% 
   group_by(flg_identification_systems_yeast) %>% 
   summarise(count = n(), .groups = "drop") %>% 
-  mutate(prop = count / sum(count)) %>% 
+  mutate(total = sum(count), prop = count / total) %>% 
   mutate(
     percent = round(100 * prop, 2),
     text = str_c(percent, "% (", count, ")")
@@ -1745,12 +2022,12 @@ flg_identi_yeast_plot <- flg_identi_yeast %>%
   ggplot(aes(reorder(flg_identification_systems_yeast, prop), prop)) +
   geom_col(fill = "#01324f") +
   geom_text(aes(label = text), hjust = -0.1, size = 3.2) +
-  scale_y_continuous(limits = c(0, 0.79), expand = c(0, 0), labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 0.75), expand = c(0, 0), labels = scales::percent) +
   theme_minimal() +
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "Does the laboratory has yeast identification systems?",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
+    subtitle = sprintf("Percentage and frequency (N = %s)", mean(flg_identi_yeast$total)),
     x = NULL,
     y = NULL
   ) +
@@ -1790,7 +2067,7 @@ identi_yeast <- survey %>%
   mutate(identi_yeast = fct_rev(identi_yeast)) %>% 
   group_by(identi_yeast, availability) %>% 
   summarise(n = n()) %>% 
-  mutate(prop = n / sum(n)) %>% 
+  mutate(total = sum(n), prop = n / total) %>% 
   mutate(text = str_c(round(100 * prop, 2), "%")) %>% 
   ungroup() %>% 
   complete(identi_yeast, availability) %>% 
@@ -1819,7 +2096,7 @@ identi_yeast_plot <- identi_yeast %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "What yeast identification systems are available in your laboratory?",
-    subtitle = "Percentage (%) by sample type from total (N = 37)",
+    subtitle = sprintf("Percentage by sample (N = %s)", mean(identi_yeast$total, na.rm = TRUE)),
     x = NULL,
     y = NULL,
     fill = "Available?"
@@ -1838,7 +2115,7 @@ identi_yeast_plot
 flg_store_yeast <- survey %>% 
   group_by(flg_store_yeast_isolates) %>% 
   summarise(count = n(), .groups = "drop") %>% 
-  mutate(prop = count / sum(count)) %>% 
+  mutate(total = sum(count), prop = count / total) %>% 
   mutate(
     percent = round(100 * prop, 2),
     text = str_c(percent, "% (", count, ")")
@@ -1864,12 +2141,12 @@ flg_store_yeast_plot <- flg_store_yeast %>%
   ggplot(aes(reorder(flg_store_yeast_isolates, prop), prop)) +
   geom_col(fill = "#01324f") +
   geom_text(aes(label = text), hjust = -0.1, size = 3.2) +
-  scale_y_continuous(limits = c(0, 0.81), expand = c(0, 0), labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 0.85), expand = c(0, 0), labels = scales::percent) +
   theme_minimal() +
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "Does the laboratory routinely stock clinical yeast isolates?",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
+    subtitle = sprintf("Percentage and frequency (N = %s)", mean(flg_store_yeast$total, na.rm = TRUE)),
     x = NULL,
     y = NULL
   ) +
@@ -1912,7 +2189,7 @@ culture_media_mold <- survey %>%
   ) %>% 
   group_by(culture_media_mold, availability) %>% 
   summarise(n = n()) %>% 
-  mutate(prop = n / sum(n)) %>% 
+  mutate(total = sum(n), prop = n / total) %>% 
   mutate(text = str_c(round(100 * prop, 2), "%")) %>% 
   ungroup()
 
@@ -1939,7 +2216,7 @@ culture_media_mold_plot <- culture_media_mold %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "Which types of culture medias are available in your laboratory for mold\nidentification?",
-    subtitle = "Percentage (%) by culture media type from total (N = 37)",
+    subtitle = sprintf("Percentage by culture media (N = %s)", mean(culture_media_mold$total, na.rm = TRUE)),
     x = NULL,
     y = NULL,
     fill = "Available?"
@@ -1962,7 +2239,7 @@ culture_media_mold_plot
 flg_identi_mold <- survey %>% 
   group_by(flg_identification_systems_mold) %>% 
   summarise(count = n(), .groups = "drop") %>% 
-  mutate(prop = count / sum(count)) %>% 
+  mutate(total = sum(count), prop = count / total) %>% 
   mutate(
     percent = round(100 * prop, 2),
     text = str_c(percent, "% (", count, ")")
@@ -1993,7 +2270,7 @@ flg_identi_mold_plot <- flg_identi_mold %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "Does the laboratory has mold identification systems?",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
+    subtitle = sprintf("Percentage and frequency (N = %s)", mean(flg_identi_mold$total, na.rm = TRUE)),
     x = NULL,
     y = NULL
   ) +
@@ -2011,7 +2288,7 @@ flg_identif_mold_ext <- survey %>%
   filter(flg_identification_systems_mold == "No") %>% 
   group_by(flg_identif_mold_ext_lab) %>% 
   summarise(count = n(), .groups = "drop") %>% 
-  mutate(prop = count / sum(count)) %>% 
+  mutate(total = sum(count), prop = count / total) %>% 
   mutate(
     percent = round(100 * prop, 2),
     text = str_c(percent, "% (", count, ")")
@@ -2037,12 +2314,12 @@ flg_identif_mold_ext_plot <- flg_identif_mold_ext %>%
   ggplot(aes(reorder(flg_identif_mold_ext_lab, prop), prop)) +
   geom_col(fill = "#01324f") +
   geom_text(aes(label = text), hjust = -0.1, size = 3.2) +
-  scale_y_continuous(limits = c(0, 0.75), expand = c(0, 0), labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 0.79), expand = c(0, 0), labels = scales::percent) +
   theme_minimal() +
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "Does the laboratory send mold isolates to external labs for identification?",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
+    subtitle = sprintf("Percentage and frequency (N = %s)", mean(flg_identif_mold_ext$total, na.rm = TRUE)),
     x = NULL,
     y = NULL
   ) +
@@ -2080,7 +2357,7 @@ identi_mold <- survey %>%
   mutate(identi_mold = fct_rev(identi_mold)) %>% 
   group_by(identi_mold, availability) %>% 
   summarise(n = n()) %>% 
-  mutate(prop = n / sum(n)) %>% 
+  mutate(total = sum(n), prop = n / total) %>% 
   mutate(text = str_c(round(100 * prop, 2), "%")) %>% 
   ungroup() %>% 
   complete(identi_mold, availability) %>% 
@@ -2109,7 +2386,7 @@ identi_mold_plot <- identi_mold %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "What mold identification systems are available in your laboratory?",
-    subtitle = "Percentage (%) by sample type from total (N = 37)",
+    subtitle = sprintf("Percentage by system (N = %s)", mean(identi_mold$total, na.rm = TRUE)),
     x = NULL,
     y = NULL,
     fill = "Available?"
@@ -2128,7 +2405,7 @@ identi_mold_plot
 flg_store_mold <- survey %>% 
   group_by(flg_store_mold_isolates) %>% 
   summarise(count = n(), .groups = "drop") %>% 
-  mutate(prop = count / sum(count)) %>% 
+  mutate(total = sum(count), prop = count / total) %>% 
   mutate(
     percent = round(100 * prop, 2),
     text = str_c(percent, "% (", count, ")")
@@ -2154,12 +2431,12 @@ flg_store_mold_plot <- flg_store_mold %>%
   ggplot(aes(reorder(flg_store_mold_isolates, prop), prop)) +
   geom_col(fill = "#01324f") +
   geom_text(aes(label = text), hjust = -0.1, size = 3.2) +
-  scale_y_continuous(limits = c(0, 0.97), expand = c(0, 0), labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 1.03), expand = c(0, 0), labels = scales::percent) +
   theme_minimal() +
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "Does the laboratory routinely stock clinical mold isolates?",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
+    subtitle = sprintf("Percentage and frequency (N = %s)", mean(flg_store_mold$total, na.rm = TRUE)),
     x = NULL,
     y = NULL
   ) +
@@ -2176,7 +2453,7 @@ flg_store_mold_plot
 flg_suscep_tests <- survey %>% 
   group_by(flg_antifungal_suscep_tests) %>% 
   summarise(count = n(), .groups = "drop") %>% 
-  mutate(prop = count / sum(count)) %>% 
+  mutate(total = sum(count), prop = count / total) %>% 
   mutate(
     percent = round(100 * prop, 2),
     text = str_c(percent, "% (", count, ")")
@@ -2202,12 +2479,12 @@ flg_suscep_tests_plot <- flg_suscep_tests %>%
   ggplot(aes(reorder(flg_antifungal_suscep_tests, prop), prop)) +
   geom_col(fill = "#01324f") +
   geom_text(aes(label = text), hjust = -0.1, size = 3.2) +
-  scale_y_continuous(limits = c(0, 0.71), expand = c(0, 0), labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 0.69), expand = c(0, 0), labels = scales::percent) +
   theme_minimal() +
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "Does the laboratory offer in-vitro antifungal susceptibility testing services?",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
+    subtitle = sprintf("Percentage and frequency (N = %s)", mean(flg_suscep_tests$total, na.rm = TRUE)),
     x = NULL,
     y = NULL
   ) +
@@ -2225,7 +2502,7 @@ flg_suscep_tests_lab <- survey %>%
   filter(flg_antifungal_suscep_tests == "Sí") %>% 
   group_by(flg_antifungal_suscep_tests_lab) %>% 
   summarise(count = n(), .groups = "drop") %>% 
-  mutate(prop = count / sum(count)) %>% 
+  mutate(total = sum(count), prop = count / total) %>% 
   mutate(
     percent = round(100 * prop, 2),
     text = str_c(percent, "% (", count, ")")
@@ -2256,7 +2533,7 @@ flg_suscep_tests_lab_plot <- flg_suscep_tests_lab %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "Does the laboratory perform the antifungal susceptibility tests or are they sent to\nan external laboratory?",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 20)",
+    subtitle = sprintf("Percentage and frequency (N = %s)", mean(flg_suscep_tests_lab$total, na.rm = TRUE)),
     x = NULL,
     y = NULL
   ) +
@@ -2293,7 +2570,7 @@ type_antifungal <- survey %>%
   mutate(type_antifungal = fct_rev(type_antifungal)) %>% 
   group_by(type_antifungal, availability) %>% 
   summarise(n = n()) %>% 
-  mutate(prop = n / sum(n)) %>% 
+  mutate(total = sum(n), prop = n / total) %>% 
   mutate(text = str_c(round(100 * prop, 2), "%")) %>% 
   ungroup() %>% 
   complete(type_antifungal, availability) %>% 
@@ -2322,7 +2599,7 @@ type_antifungal_plot <- type_antifungal %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "What types of fungi are antifungal susceptibility tests available for?",
-    subtitle = "Percentage (%) by sample type from total (N = 20)",
+    subtitle = sprintf("Percentage by test (N = %s)", mean(type_antifungal$total, na.rm = TRUE)),
     x = NULL,
     y = NULL,
     fill = "Available?"
@@ -2335,15 +2612,15 @@ type_antifungal_plot <- type_antifungal %>%
 type_antifungal_plot
 ```
 
-# Pruebas serológicas
+# Serological tests
 
-## ¿Las pruebas de detección de anticuerpos contra hongos (*Aspergillus sp.*, *Histoplasma capsulatum*, *Paracoccidioides brasiliensis*) está disponibles en su laboratorio?
+## Are antibody tests against fungi (*Aspergillus sp.*, *Histoplasma capsulatum*, *Paracoccidioides brasiliensis*) available in your laboratory?
 
 ```{r}
 flg_antibodies_tests <- survey %>% 
   group_by(flg_antifungal_antibodies_tests_lab) %>% 
   summarise(count = n(), .groups = "drop") %>% 
-  mutate(prop = count / sum(count)) %>% 
+  mutate(total = sum(count), prop = count / total) %>% 
   mutate(
     percent = round(100 * prop, 2),
     text = str_c(percent, "% (", count, ")")
@@ -2354,22 +2631,27 @@ flg_antibodies_tests <- survey %>%
       levels = c(
         "No", "Sí"
       ),
-      labels = c("No", "Sí")
+      labels = c("No", "Yes")
     )
   ) %>% 
-  mutate(flg_antifungal_antibodies_tests_lab = fct_rev(flg_antifungal_antibodies_tests_lab))
+  mutate(
+    flg_antifungal_antibodies_tests_lab = fct_explicit_na(
+      flg_antifungal_antibodies_tests_lab, na_level = "No response"
+    )
+  )
 ```
 
 ```{r}
 flg_antibodies_tests_plot <- flg_antibodies_tests %>% 
-  ggplot(aes(flg_antifungal_antibodies_tests_lab, prop)) +
-  geom_col(fill = "#4DBBD5FF") +
+  ggplot(aes(reorder(flg_antifungal_antibodies_tests_lab, prop), prop)) +
+  geom_col(fill = "#01324f") +
   geom_text(aes(label = text), hjust = -0.1, size = 3.2) +
-  scale_y_continuous(limits = c(0, 1.1), expand = c(0, 0), labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 1.07), expand = c(0, 0), labels = scales::percent) +
   theme_minimal() +
-  theme(legend.position = "none", panel.grid.minor.x = element_blank()) +
+  theme(panel.grid.minor.x = element_blank()) +
   labs(
-    title = "¿Las pruebas de detección de anticuerpos contra hongos están disponibles\nen su laboratorio? (N = 54)",
+    title = "Are antibody tests against fungi available in your laboratory?",
+    subtitle = sprintf("Percentage and frequency (N = %s)", mean(flg_antibodies_tests$total, na.rm = TRUE)),
     x = NULL,
     y = NULL
   ) +
@@ -2380,14 +2662,14 @@ flg_antibodies_tests_plot <- flg_antibodies_tests %>%
 flg_antibodies_tests_plot
 ```
 
-## ¿Las pruebas de detección de anticuerpos contra hongos (*Aspergillus sp.*, *Histoplasma capsulatum*, *Paracoccidioides brasiliensis*) están disponibles en otro laboratorio en su hospital?
+## Are antibody tests against fungi available in another laboratory in your hospital?
 
 ```{r}
 flg_antibodies_tests_other <- survey %>% 
   filter(flg_antifungal_antibodies_tests_lab == "No") %>% 
   group_by(flg_antifungal_antibodies_tests_other_lab) %>% 
   summarise(count = n(), .groups = "drop") %>% 
-  mutate(prop = count / sum(count)) %>% 
+  mutate(total = sum(count), prop = count / total) %>% 
   mutate(
     percent = round(100 * prop, 2),
     text = str_c(percent, "% (", count, ")")
@@ -2398,26 +2680,27 @@ flg_antibodies_tests_other <- survey %>%
       levels = c(
         "No", "Sí"
       ),
-      labels = c("No", "Sí")
+      labels = c("No", "Yes")
     )
   ) %>% 
   mutate(
-    flg_antifungal_antibodies_tests_other_lab = fct_rev(
-      flg_antifungal_antibodies_tests_other_lab
+    flg_antifungal_antibodies_tests_other_lab = fct_explicit_na(
+      flg_antifungal_antibodies_tests_other_lab, na_level = "No response"
     )
   )
 ```
 
 ```{r}
 flg_antibodies_tests_other_plot <- flg_antibodies_tests_other %>% 
-  ggplot(aes(flg_antifungal_antibodies_tests_other_lab, prop)) +
-  geom_col(fill = "#4DBBD5FF") +
+  ggplot(aes(reorder(flg_antifungal_antibodies_tests_other_lab, prop), prop)) +
+  geom_col(fill = "#01324f") +
   geom_text(aes(label = text), hjust = -0.1, size = 3.2) +
-  scale_y_continuous(limits = c(0, 1.1), expand = c(0, 0), labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 1.05), expand = c(0, 0), labels = scales::percent) +
   theme_minimal() +
   theme(legend.position = "none", panel.grid.minor.x = element_blank()) +
   labs(
-    title = "¿Las pruebas de detección de anticuerpos contra hongos están disponibles\nen otro laboratorio en su hospital? (N = 52)",
+    title = "Are antibody tests against fungi available in another laboratory in your hospital?",
+    subtitle = sprintf("Percentage and frequency (N = %s)", mean(flg_antibodies_tests_other$total, na.rm = TRUE)),
     x = NULL,
     y = NULL
   ) +
@@ -2428,14 +2711,14 @@ flg_antibodies_tests_other_plot <- flg_antibodies_tests_other %>%
 flg_antibodies_tests_other_plot
 ```
 
-## ¿Las pruebas de detección de anticuerpos contra hongos (*Aspergillus sp.*, *Histoplasma capsulatum*, *Paracoccidioides brasiliensis*) se envían a un laboratorio externo?
+## Are the tests for the detection of antibodies against fungi sent to an external laboratory?
 
 ```{r}
 flg_antibodies_tests_ext <- survey %>% 
-  filter(flg_antifungal_antibodies_tests_other_lab == "No") %>% 
+  filter(flg_antifungal_antibodies_tests_lab == "No") %>% 
   group_by(flg_antifungal_antibodies_tests_ext_lab) %>% 
   summarise(count = n(), .groups = "drop") %>% 
-  mutate(prop = count / sum(count)) %>% 
+  mutate(total = sum(count), prop = count / total) %>% 
   mutate(
     percent = round(100 * prop, 2),
     text = str_c(percent, "% (", count, ")")
@@ -2446,26 +2729,27 @@ flg_antibodies_tests_ext <- survey %>%
       levels = c(
         "No", "Sí"
       ),
-      labels = c("No", "Sí")
+      labels = c("No", "Yes")
     )
   ) %>% 
   mutate(
-    flg_antifungal_antibodies_tests_ext_lab = fct_rev(
-      flg_antifungal_antibodies_tests_ext_lab
+    flg_antifungal_antibodies_tests_ext_lab = fct_explicit_na(
+      flg_antifungal_antibodies_tests_ext_lab, na_level = "No response"
     )
   )
 ```
 
 ```{r}
 flg_antibodies_tests_ext_plot <- flg_antibodies_tests_ext %>% 
-  ggplot(aes(flg_antifungal_antibodies_tests_ext_lab, prop)) +
-  geom_col(fill = "#4DBBD5FF") +
+  ggplot(aes(reorder(flg_antifungal_antibodies_tests_ext_lab, prop), prop)) +
+  geom_col(fill = "#01324f") +
   geom_text(aes(label = text), hjust = -0.1, size = 3.2) +
-  scale_y_continuous(limits = c(0, 0.9), expand = c(0, 0), labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 0.81), expand = c(0, 0), labels = scales::percent) +
   theme_minimal() +
   theme(legend.position = "none", panel.grid.minor.x = element_blank()) +
   labs(
-    title = "¿Las pruebas de detección de anticuerpos contra hongos se envían a un\nlaboratorio externo? (N = 46)",
+    title = "Are the tests for the detection of antibodies against fungi sentto an\nexternal laboratory?",
+    subtitle = sprintf("Percentage and frequency (N = %s)", mean(flg_antibodies_tests_ext$total, na.rm = TRUE)),
     x = NULL,
     y = NULL
   ) +
@@ -2476,13 +2760,13 @@ flg_antibodies_tests_ext_plot <- flg_antibodies_tests_ext %>%
 flg_antibodies_tests_ext_plot
 ```
 
-## ¿Las pruebas de detección de antígenos contra *Cryptococcus* están disponibles en su laboratio?
+## Are *Cryptococcus* antigen detection tests available in your laboratory?
 
 ```{r}
 flg_crypto_antigens <- survey %>% 
   group_by(flg_crypto_antigens_test_lab) %>% 
   summarise(count = n(), .groups = "drop") %>% 
-  mutate(prop = count / sum(count)) %>% 
+  mutate(total = sum(count), prop = count / total) %>% 
   mutate(
     percent = round(100 * prop, 2),
     text = str_c(percent, "% (", count, ")")
@@ -2493,26 +2777,27 @@ flg_crypto_antigens <- survey %>%
       levels = c(
         "No", "Sí"
       ),
-      labels = c("No", "Sí")
+      labels = c("No", "Yes")
     )
   ) %>% 
   mutate(
-    flg_crypto_antigens_test_lab = fct_rev(
-      flg_crypto_antigens_test_lab
+    flg_crypto_antigens_test_lab = fct_explicit_na(
+      flg_crypto_antigens_test_lab, na_level = "No response"
     )
   )
 ```
 
 ```{r}
 flg_crypto_antigens_plot <- flg_crypto_antigens %>% 
-  ggplot(aes(flg_crypto_antigens_test_lab, prop)) +
-  geom_col(fill = "#4DBBD5FF") +
+  ggplot(aes(reorder(flg_crypto_antigens_test_lab, prop), prop)) +
+  geom_col(fill = "#01324f") +
   geom_text(aes(label = text), hjust = -0.1, size = 3.2) +
-  scale_y_continuous(limits = c(0, 0.95), expand = c(0, 0), labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 0.98), expand = c(0, 0), labels = scales::percent) +
   theme_minimal() +
   theme(legend.position = "none", panel.grid.minor.x = element_blank()) +
   labs(
-    title = "¿Las pruebas de detección de antígenos contra Cryptococcus están disponibles\nen su laboratorio? (N = 54)",
+    title = "Are Cryptococcus antigen detection tests available in your laboratory?",
+    subtitle = sprintf("Percentage and frequency (N = %s)", mean(flg_crypto_antigens$total, na.rm = TRUE)),
     x = NULL,
     y = NULL
   ) +
@@ -2523,14 +2808,13 @@ flg_crypto_antigens_plot <- flg_crypto_antigens %>%
 flg_crypto_antigens_plot
 ```
 
-## ¿Las pruebas de detección de antígenos contra *Cryptococcus* están disponibles en otro laboratorio del hospital?
+## Are *Cryptococcus* antigen tests available at another hospital lab?
 
 ```{r}
 flg_crypto_antigens_other <- survey %>% 
-  filter(flg_crypto_antigens_test_lab == "No") %>% 
   group_by(flg_crypto_antigens_test_other_lab) %>% 
   summarise(count = n(), .groups = "drop") %>% 
-  mutate(prop = count / sum(count)) %>% 
+  mutate(total = sum(count), prop = count / total) %>% 
   mutate(
     percent = round(100 * prop, 2),
     text = str_c(percent, "% (", count, ")")
@@ -2541,44 +2825,44 @@ flg_crypto_antigens_other <- survey %>%
       levels = c(
         "No", "Sí"
       ),
-      labels = c("No", "Sí")
+      labels = c("No", "Yes")
     )
   ) %>% 
   mutate(
-    flg_crypto_antigens_test_other_lab = fct_rev(
-      flg_crypto_antigens_test_other_lab
+    flg_crypto_antigens_test_other_lab = fct_explicit_na(
+      flg_crypto_antigens_test_other_lab, na_level = "No response"
     )
   )
 ```
 
 ```{r}
 flg_crypto_antigens_other_plot <- flg_crypto_antigens_other %>% 
-  ggplot(aes(flg_crypto_antigens_test_other_lab, prop)) +
-  geom_col(fill = "#4DBBD5FF") +
+  ggplot(aes(reorder(flg_crypto_antigens_test_other_lab, prop), prop)) +
+  geom_col(fill = "#01324f") +
   geom_text(aes(label = text), hjust = -0.1, size = 3.2) +
-  scale_y_continuous(limits = c(0, 1.1), expand = c(0, 0), labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 0.98), expand = c(0, 0), labels = scales::percent) +
   theme_minimal() +
   theme(legend.position = "none", panel.grid.minor.x = element_blank()) +
   labs(
-    title = "¿Las pruebas de detección de antígenos contra Cryptococcus están disponibles\nen otro laboratorio del hospital? (N = 45)",
+    title = "Are Cryptococcus antigen tests available at another hospital lab?",
+    subtitle = sprintf("Percentage and frequency (N = %s)", mean(flg_crypto_antigens_other$total, na.rm = TRUE)),
     x = NULL,
     y = NULL
   ) +
   coord_flip()
 ```
 
-```{r fig.height=1.5, fig.width=8}
+```{r fig.height=2, fig.width=8}
 flg_crypto_antigens_other_plot
 ```
 
-## ¿Las pruebas de detección de antígenos contra Cryptococcus se envían a un laboratorio externo?
+## Are Cryptococcus antigen tests sent to an external laboratory?
 
 ```{r}
-flg_crypto_ext <- survey %>% 
-  filter(flg_crypto_antigens_test_lab == "No") %>% 
+flg_crypto_antigens_ext <- survey %>% 
   group_by(flg_crypto_antigens_test_ext_lab) %>% 
   summarise(count = n(), .groups = "drop") %>% 
-  mutate(prop = count / sum(count)) %>% 
+  mutate(total = sum(count), prop = count / total) %>% 
   mutate(
     percent = round(100 * prop, 2),
     text = str_c(percent, "% (", count, ")")
@@ -2589,26 +2873,27 @@ flg_crypto_ext <- survey %>%
       levels = c(
         "No", "Sí"
       ),
-      labels = c("No", "Sí")
+      labels = c("No", "Yes")
     )
   ) %>% 
   mutate(
-    flg_crypto_antigens_test_ext_lab = fct_rev(
-      flg_crypto_antigens_test_ext_lab
+    flg_crypto_antigens_test_ext_lab = fct_explicit_na(
+      flg_crypto_antigens_test_ext_lab, na_level = "No response"
     )
   )
 ```
 
 ```{r}
-flg_crypto_ext_plot <- flg_crypto_ext %>% 
-  ggplot(aes(flg_crypto_antigens_test_ext_lab, prop)) +
-  geom_col(fill = "#4DBBD5FF") +
+flg_crypto_antigens_ext_plot <- flg_crypto_antigens_ext %>% 
+  ggplot(aes(reorder(flg_crypto_antigens_test_ext_lab, prop), prop)) +
+  geom_col(fill = "#01324f") +
   geom_text(aes(label = text), hjust = -0.1, size = 3.2) +
-  scale_y_continuous(limits = c(0, 1.1), expand = c(0, 0), labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 0.81), expand = c(0, 0), labels = scales::percent) +
   theme_minimal() +
   theme(legend.position = "none", panel.grid.minor.x = element_blank()) +
   labs(
-    title = "¿Las pruebas de detección de antígenos contra Cryptococcus se envían a un\nlaboratorio externo? (N = 45)",
+    title = "Are Cryptococcus antigen tests available at another hospital lab?",
+    subtitle = sprintf("Percentage and frequency (N = %s)", mean(flg_crypto_antigens_ext$total, na.rm = TRUE)),
     x = NULL,
     y = NULL
   ) +
@@ -2616,7 +2901,7 @@ flg_crypto_ext_plot <- flg_crypto_ext %>%
 ```
 
 ```{r fig.height=2, fig.width=8}
-flg_crypto_ext_plot
+flg_crypto_antigens_ext_plot
 ```
 
 ## Are antigen detection tests for Cryptococcus available in your laboratory?
@@ -2653,7 +2938,8 @@ crypto <- survey %>%
   ) %>% 
   mutate(flg_crypto = fct_rev(flg_crypto)) %>% 
   mutate(
-    prop = count / sum(count),
+    total = sum(count),
+    prop = count / total,
     percent = round(100 * prop, 2),
     text = str_c(percent, "% (", count, ")")
   )
@@ -2664,12 +2950,12 @@ crypto_plot <- crypto %>%
   ggplot(aes(reorder(flg_crypto, prop), prop)) +
   geom_col(fill = "#01324f") +
   geom_text(aes(label = text), hjust = -0.1, size = 3.2) +
-  scale_y_continuous(limits = c(0, 0.76), expand = c(0, 0), labels = scales::percent) +
+  scale_y_continuous(limits = c(0, 0.82), expand = c(0, 0), labels = scales::percent) +
   theme_minimal() +
   theme(legend.position = "none", panel.grid.minor.x = element_blank()) +
   labs(
     title = "Are antigen detection tests for Cryptococcus available in your laboratory?",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
+    subtitle = sprintf("Percentage and frequency (N = %s)", mean(crypto$total, na.rm = TRUE)),
     x = NULL,
     y = NULL
   ) +
@@ -2797,7 +3083,7 @@ histo_plot <- histo %>%
   theme(legend.position = "none", panel.grid.minor.x = element_blank()) +
   labs(
     title = "Are antigen detection tests for Histoplasma Capsulatum available in your\nlaboratory?",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
+    subtitle = "Percentage and frequency (N = 47)",
     x = NULL,
     y = NULL
   ) +
@@ -2864,7 +3150,7 @@ asper_plot <- asper %>%
   theme(legend.position = "none", panel.grid.minor.x = element_blank()) +
   labs(
     title = "Are antigen detection tests for Aspergillus sp. available in your laboratory?",
-    subtitle = "Percentage (%) and frequency (n) of laboratories from total (N = 54)",
+    subtitle = "Percentage and frequency (N = 47)",
     x = NULL,
     y = NULL
   ) +
@@ -2910,7 +3196,7 @@ flg_pcr_tests_plot <- flg_pcr_tests %>%
   theme(legend.position = "none", panel.grid.minor.x = element_blank()) +
   labs(
     title = "Are PCR tests for the diagnosis of fungi available in your laboratory/hospital?",
-    subtitle = "Percentage (%) and frecuency (n) of laboratories from total (N = 54)",
+    subtitle = "Percentage (%) and frecuency (n) of laboratories from total (N = 47)",
     x = NULL,
     y = NULL
   ) +
@@ -3057,7 +3343,7 @@ antifungal_plot <- antifungal %>%
   theme(panel.grid.minor.x = element_blank()) +
   labs(
     title = "Which antifungals are available in your hospital for the treatment of patients?",
-    subtitle = "Availability percentage by antifungal type from total (N = 54)",
+    subtitle = "Availability percentage by antifungal type from total (N = 47)",
     x = NULL,
     y = NULL,
     fill = "Available?"
